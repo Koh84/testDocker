@@ -1,0 +1,9 @@
+docker build -t testdocker .
+
+docker run -it --rm testdocker
+
+docker-compose up --build
+
+docker-compose down           # Stop and remove current containers
+docker-compose build --no-cache  # Rebuild with updated requirements
+docker-compose up             # Run again
