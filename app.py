@@ -1,41 +1,62 @@
+from flask import Flask, request, jsonify
 import mysql.connector
-import time
+import traceback
 
-# Retry logic in case DB isn't ready yet
-for _ in range(10):
-    try:
-        conn = mysql.connector.connect(
-            host='db',
-            user='root',
-            password='example',
-            database='testdb'
-        )
-        break
-    except mysql.connector.Error:
-        print("Waiting for MySQL...")
-        time.sleep(2)
-else:
-    print("Failed to connect to database.")
-    exit(1)
+app = Flask(__name__)
 
-cursor = conn.cursor()
-
-# Create table if it doesn't exist
-cursor.execute("""
-    CREATE TABLE IF NOT EXISTS messages (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        content TEXT
+def get_db_connection():
+    return mysql.connector.connect(
+        host='db',
+        user='root',
+        password='yourpassword',
+        database='testdb'
     )
-""")
 
-# Insert a message
-cursor.execute("INSERT INTO messages (content) VALUES (%s)", ("Hello from Docker!",))
-conn.commit()
+@app.route('/data', methods=['POST'])
+def insert_data():
+    try:
+        content = request.get_json(force=True)
+        if not content:
+            return jsonify({'error': 'No JSON received'}), 400
 
-# Fetch and print messages
-cursor.execute("SELECT * FROM messages")
-rows = cursor.fetchall()
-for row in rows:
-    print(f"Row: {row}")
+        print("Received JSON:", content)
+        message = content.get('message', 'default message')
 
-conn.close()
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "CREATE TABLE IF NOT EXISTS messages (id INT AUTO_INCREMENT PRIMARY KEY, msg TEXT)"
+        )
+        cursor.execute("INSERT INTO messages (msg) VALUES (%s)", (message,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return jsonify({'status': 'success', 'message': message})
+
+    except Exception as e:
+        print("Error:", e)
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 400
+
+
+@app.route('/data', methods=['GET'])
+def get_data():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM messages")
+        rows = cursor.fetchall()
+        cursor.close()
+        conn.close()
+
+        # Return as list of dicts
+        results = [{'id': row[0], 'message': row[1]} for row in rows]
+        return jsonify(results)
+
+    except Exception as e:
+        print("Error:", e)
+        return jsonify({'error': str(e)}), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=5000)
